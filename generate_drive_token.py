@@ -1,25 +1,37 @@
-import pickle
-import os
+import os, pickle
+from urllib.parse import parse_qs, urlparse
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-credentials = None
-__G_DRIVE_TOKEN_FILE = "token.pickle"
-__OAUTH_SCOPE = ["https://www.googleapis.com/auth/drive"]
-if os.path.exists(__G_DRIVE_TOKEN_FILE):
-    with open(__G_DRIVE_TOKEN_FILE, "rb") as f:
-        credentials = pickle.load(f)
-        if (
-            (credentials is None or not credentials.valid)
-            and credentials
-            and credentials.expired
-            and credentials.refresh_token
-        ):
-            credentials.refresh(Request())
-else:
-    flow = InstalledAppFlow.from_client_secrets_file("credentials.json", __OAUTH_SCOPE)
-    credentials = flow.run_local_server(port=0, open_browser=False)
+TOKEN_FILE = "token.pickle"
+SCOPES = ["https://www.googleapis.com/auth/drive"]
+REDIRECT_URI = "http://localhost:53682/"
 
-# Save the credentials for the next run
-with open(__G_DRIVE_TOKEN_FILE, "wb") as token:
-    pickle.dump(credentials, token)
+creds = None
+if os.path.exists(TOKEN_FILE):
+    with open(TOKEN_FILE, "rb") as f:
+        creds = pickle.load(f)
+
+if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES, redirect_uri=REDIRECT_URI)
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",
+            include_granted_scopes="true",
+            prompt="consent",
+        )
+        print("\nOpen this URL in your browser, approve, then copy the FINAL redirected URL (with ?code=...):\n")
+        print(auth_url, "\n")
+        redirected = input("Paste the FULL redirected URL here:\n> ").strip()
+        code = parse_qs(urlparse(redirected).query).get("code", [None])[0]
+        if not code:
+            raise SystemExit("No 'code' in pasted URL.")
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+
+    with open(TOKEN_FILE, "wb") as f:
+        pickle.dump(creds, f)
+
+print("✅ token.pickle created/refreshed successfully.")
